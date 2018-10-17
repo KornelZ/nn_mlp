@@ -22,7 +22,7 @@ def divide_dataset(dataset):
 
 
 def norm(data):
-    return (data - np.min(data)) / (np.max(data) - np.min(data))
+    return (data - np.min(data, axis=0)) / (np.max(data, axis=0) - np.min(data, axis=0))
 
 
 def one_hot_encode(labels, num_classes):

@@ -3,6 +3,10 @@ import numpy as np
 import tensorflow as tf
 import random
 import matplotlib.pyplot as plt
+import sklearn as sk
+from sklearn import metrics
+import itertools
+import datetime
 
 CLASSIFICATION = 0
 REGRESSION = 1
@@ -11,12 +15,41 @@ TRAIN_PATH = "data/Classification/data.three_gauss.train.10000.csv"
 TRAIN_SIZE_PERCENT = 0.75
 LEARNING_RATE = 0.001
 MOMENTUM = 0.2
-EPOCHS = 100
+EPOCHS = 1000
 BATCH_SIZE = 32
 MODE = CLASSIFICATION
 ACTIVATION = tf.nn.relu
 LAYERS = [700, 500, 200]
 RANDOM_SEED = None
+
+
+def plot_confusion_matrix(cm, classes, title='Confusion matrix', cmap=plt.cm.Blues):
+    '''
+    Plots confusion matrix,
+    cm - confusion matrix
+    '''
+    plt.imshow(cm, interpolation='nearest', cmap=cmap)
+    plt.title(title)
+    plt.colorbar()
+    tick_marks = np.arange(len(classes))
+    plt.xticks(tick_marks, classes, rotation=45)
+    plt.yticks(tick_marks, classes)
+
+    # digit format
+    fmt = 'd'
+    # threshold for coloring the figure
+    thresh = cm.max() / 2.
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        plt.text(j, i, format(cm[i, j], fmt),
+                 horizontalalignment="center",
+                 color="white" if cm[i, j] > thresh else "black")
+
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
+    plt.savefig("cm_{}.png".format(str(datetime.datetime.now())))
+    print('Confusion matrix saved.')
+    plt.close()
+
 
 def read_csv(path):
     try:
@@ -38,10 +71,12 @@ def norm(data):
         return data
     return (data - np.min(data, axis=0)) / (np.max(data, axis=0) - np.min(data, axis=0))
 
+
 def denorm(data, non_norm_data):
     min = np.min(non_norm_data, axis=0)
     max = np.max(non_norm_data, axis=0)
     return data * (max - min) + min
+
 
 def norm_labels(labels, num_classes):
     """only for classification"""
@@ -127,9 +162,6 @@ def main():
         loss = cross_entropy()
     else:
         loss = mean_squared_error()
-    # maybe for visualisation
-    # is_correct = tf.equal(tf.argmax(Y, 1), tf.argmax(Y_, 1))
-    # accuracy = tf.reduce_mean(tf.cast(is_correct, tf.float32))
 
     optimizer = tf.train.MomentumOptimizer(LEARNING_RATE, MOMENTUM)
     train_step = optimizer.minimize(loss)
@@ -139,18 +171,54 @@ def main():
     def classification_session():
         with tf.Session() as sees:
             sees.run(init)
+            x = []
+            y_train = []
+            y_test = []
             for i in range(EPOCHS):
                 train_batch, train_batch_labels = batch_data(train_data, train_labels)
                 sees.run(train_step, feed_dict={X: train_batch, Y_: train_batch_labels})
                 correct_prediction = tf.equal(tf.argmax(Y, 1), tf.argmax(Y_, 1))
                 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-                print("Validation accuracy:", sees.run(accuracy, feed_dict={
-                    X: valid_data, Y_: valid_labels}))
+                train_data_accuracy = sees.run(accuracy, feed_dict={X: train_batch, Y_: train_batch_labels})
+                test_data_accuracy = sees.run(accuracy, feed_dict={X: valid_data, Y_: valid_labels})
+                print("Validation accuracy:", test_data_accuracy)
+                print("Train accuracy:", train_data_accuracy)
+                # uncomment to see weights and biases
+                # print('{} weights'.format(i))
+                # print(sees.run(weights))
+                # print('{} biases'.format(i))
+                # print(sees.run(biases))
+                x.append(i)
+                y_train.append(train_data_accuracy)
+                y_test.append(test_data_accuracy)
             if TEST_PATH is not None:
                 correct_prediction = tf.equal(tf.argmax(Y, 1), tf.argmax(Y_, 1))
                 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-                print("Test accuracy:", sees.run(accuracy, feed_dict={
-                    X: test_data, Y_: test_labels}))
+                test_data_accuracy = sees.run(accuracy, feed_dict={X: valid_data, Y_: valid_labels})
+                print("Test accuracy:", test_data_accuracy)
+            plt.plot(x, y_train)
+            plt.ylabel('Train data accuracy')
+            plt.xlabel('Iteration')
+            plt.show()
+            plt.plot(x, y_test)
+            plt.ylabel('Test data accuracy')
+            plt.xlabel('Iteration')
+            plt.show()
+
+            # metrics
+            y_p = tf.argmax(Y, 1)
+            val_accuracy, y_pred = sees.run([accuracy, y_p], feed_dict={X: valid_data, Y_: valid_labels})
+
+            # this is the same as our result
+            print("validation accuracy:", val_accuracy)
+            y_true = np.argmax(valid_labels, 1)
+            print("Precision", sk.metrics.precision_score(y_true, y_pred, average=None))
+            print("Recall", sk.metrics.recall_score(y_true, y_pred, average=None))
+            print("f1_score", sk.metrics.f1_score(y_true, y_pred, average=None))
+            print("confusion_matrix")
+            conf_matrix = sk.metrics.confusion_matrix(y_true, y_pred)
+            print(conf_matrix)
+            plot_confusion_matrix(conf_matrix, classes=["0", "1", "2"], title='Confusion matrix')
 
     def regression_session():
         with tf.Session() as sees:

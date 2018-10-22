@@ -6,11 +6,12 @@ import matplotlib.pyplot as plt
 
 CLASSIFICATION = 0
 REGRESSION = 1
-
-PATH = "data/Classification/data.three_gauss.train.10000.csv"
+TEST_PATH = "data/Classification/data.three_gauss.test.10000.csv"
+TRAIN_PATH = "data/Classification/data.three_gauss.train.10000.csv"
 TRAIN_SIZE_PERCENT = 0.75
 LEARNING_RATE = 0.001
-EPOCHS = 200
+MOMENTUM = 0.2
+EPOCHS = 100
 BATCH_SIZE = 32
 MODE = CLASSIFICATION
 ACTIVATION = tf.nn.relu
@@ -33,6 +34,8 @@ def divide_dataset(dataset):
 
 
 def norm(data):
+    if ACTIVATION == tf.nn.relu:
+        return data
     return (data - np.min(data, axis=0)) / (np.max(data, axis=0) - np.min(data, axis=0))
 
 def denorm(data, non_norm_data):
@@ -40,11 +43,11 @@ def denorm(data, non_norm_data):
     max = np.max(non_norm_data, axis=0)
     return data * (max - min) + min
 
-def one_hot_encode(labels, num_classes):
+def norm_labels(labels, num_classes):
     """only for classification"""
     if MODE == CLASSIFICATION:
         return (np.arange(num_classes) + 1 == labels).astype(np.float32)
-    return norm(labels)
+    return labels
 
 
 def batch_data(data, labels):
@@ -57,7 +60,7 @@ def batch_data(data, labels):
 
 
 def main():
-    df = read_csv(PATH)
+    df = read_csv(TRAIN_PATH)
     if RANDOM_SEED is not None:
         random.seed(RANDOM_SEED)
         tf.set_random_seed(RANDOM_SEED)
@@ -71,11 +74,15 @@ def main():
     print("Min {}, Max {}".format(np.min(train[:, :-1]), np.max(train[:, :-1])))
     train_data = norm(train[:, :-1])
     print("After norm Min {}, Max {}".format(np.min(train_data), np.max(train_data)))
-    train_labels = one_hot_encode(train[:, -1:], num_classes)
+    train_labels = norm_labels(train[:, -1:], num_classes)
     print("Train label not encoded", train[0, -1:])
     print("Train label encoded", train_labels[0])
     valid_data = norm(valid[:, :-1])
-    valid_labels = one_hot_encode(valid[:, -1:], num_classes)
+    valid_labels = norm_labels(valid[:, -1:], num_classes)
+    if TEST_PATH is not None:
+        test = read_csv(TEST_PATH).values
+        test_data = norm(test[:, :-1])
+        test_labels = norm_labels(test[:, -1:], num_classes)
 
     def get_weights_and_biases():
         w = []
@@ -114,7 +121,7 @@ def main():
             -tf.reduce_sum(Y_ * tf.log(Y) * 100.0, reduction_indices=[1]))
 
     def mean_squared_error():
-        return tf.reduce_mean(tf.square(Y - Y_))
+        return tf.reduce_mean(tf.abs(Y - Y_))
 
     if MODE == CLASSIFICATION:
         loss = cross_entropy()
@@ -124,7 +131,7 @@ def main():
     # is_correct = tf.equal(tf.argmax(Y, 1), tf.argmax(Y_, 1))
     # accuracy = tf.reduce_mean(tf.cast(is_correct, tf.float32))
 
-    optimizer = tf.train.GradientDescentOptimizer(LEARNING_RATE)
+    optimizer = tf.train.MomentumOptimizer(LEARNING_RATE, MOMENTUM)
     train_step = optimizer.minimize(loss)
 
     init = tf.initialize_all_variables()
@@ -137,28 +144,41 @@ def main():
                 sees.run(train_step, feed_dict={X: train_batch, Y_: train_batch_labels})
                 correct_prediction = tf.equal(tf.argmax(Y, 1), tf.argmax(Y_, 1))
                 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-                print(sees.run(accuracy, feed_dict={
+                print("Validation accuracy:", sees.run(accuracy, feed_dict={
                     X: valid_data, Y_: valid_labels}))
+            if TEST_PATH is not None:
+                correct_prediction = tf.equal(tf.argmax(Y, 1), tf.argmax(Y_, 1))
+                accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+                print("Test accuracy:", sees.run(accuracy, feed_dict={
+                    X: test_data, Y_: test_labels}))
 
     def regression_session():
         with tf.Session() as sees:
             sees.run(init)
             for i in range(EPOCHS):
+                total_loss = 0
+                batches = 0
                 for offset in range(0, train_data.shape[0], BATCH_SIZE):
                     train_batch = train_data[offset:offset+BATCH_SIZE]
                     train_batch_labels = train_labels[offset:offset+BATCH_SIZE]
                     _, computed_loss = sees.run([train_step, loss], feed_dict={X: train_batch, Y_: train_batch_labels})
-                    print("Training epoch: %d, loss: %f" % (i, computed_loss))
+                    batches += 1
+                    total_loss += computed_loss
+                print("Training epoch: %d, loss: %f" % (i, total_loss / batches))
                 pred_valid = sees.run(Y, feed_dict={X: valid_data})
                 print("Validation loss:",
-                      sees.run(tf.reduce_mean(tf.squared_difference(pred_valid, valid_labels))))
+                      sees.run(tf.reduce_mean(tf.abs(pred_valid - valid_labels))))
 
-            fig, ax = plt.subplots()
-            ax.scatter(valid[:, :-1], valid[:, -1:])
-            ax.scatter(valid[:, :-1], denorm(pred_valid, valid[:, -1:]))
-            ax.set_xlabel("X")
-            ax.set_ylabel("Y")
-            plt.show()
+            if TEST_PATH is not None:
+                pred_test = sees.run(Y, feed_dict={X: test_data})
+                print("Test loss",
+                      sees.run(tf.reduce_mean(tf.abs(pred_test - test_labels))))
+                fig, ax = plt.subplots()
+                ax.scatter(test[:, :-1], test[:, -1:])
+                ax.scatter(test[:, :-1], pred_test)
+                ax.set_xlabel("X")
+                ax.set_ylabel("Y")
+                plt.show()
 
     if MODE == CLASSIFICATION:
         classification_session()

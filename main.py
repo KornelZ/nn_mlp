@@ -3,6 +3,7 @@ import numpy as np
 import tensorflow as tf
 import random
 import matplotlib.pyplot as plt
+import itertools
 
 CLASSIFICATION = 0
 REGRESSION = 1
@@ -11,12 +12,57 @@ TRAIN_PATH = "data/Classification/data.three_gauss.train.10000.csv"
 TRAIN_SIZE_PERCENT = 0.75
 LEARNING_RATE = 0.001
 MOMENTUM = 0.2
-EPOCHS = 100
+EPOCHS = 1000
 BATCH_SIZE = 32
 MODE = CLASSIFICATION
 ACTIVATION = tf.nn.relu
 LAYERS = [700, 500, 200]
 RANDOM_SEED = None
+
+def get_file_name():
+    dataset = TRAIN_PATH.split("/")
+    dataset = dataset[-1][:-4]
+    if MODE == CLASSIFICATION:
+        params = "cls_"
+    else:
+        params = "reg_"
+
+    act = { tf.nn.relu:"relu", tf.nn.sigmoid:"sigmoid", tf.nn.softmax:"softmax", tf.nn.tanh:"tanh"}
+    if ACTIVATION in act:
+        fun = act[ACTIVATION]
+    else:
+        fun = "unknown"
+    params += "lr-" + str(LEARNING_RATE) + "_mom-" + str(MOMENTUM) + "_epochs-" + str(EPOCHS) \
+        + "_batch-" + str(BATCH_SIZE) + "_act-" + fun
+
+    for layer in LAYERS:
+        params += "_l-" + str(layer)
+    return dataset + "_" + params + ".png"
+
+def plot_loss(train_loss, validation_loss):
+    fig, ax = plt.subplots()
+    ax.plot(np.arange(EPOCHS), train_loss, color='black',
+            label='train loss')
+    ax.plot(np.arange(EPOCHS), validation_loss, color='red', linestyle='dashed',
+            label='valid loss')
+    ax.set_xlabel("Epochs")
+    ax.set_ylabel("Error")
+    ax.legend()
+    plt.show()
+    fig.savefig("loss_" + get_file_name())
+
+def plot_regression(test_data, test_labels, predictions, test_loss):
+    fig, ax = plt.subplots()
+    ax.plot(test_data, predictions, color='red', linewidth=2,
+            label='predictions')
+    ax.plot(test_data, test_labels, color='green', linewidth=1,
+            label='function')
+    ax.set_xlabel("X  loss: " + "{0:.4f}".format(test_loss))
+    ax.set_ylabel("Y")
+    ax.legend()
+    plt.show()
+    fig.savefig("test_result_" + get_file_name())
+
 
 def read_csv(path):
     try:
@@ -153,6 +199,8 @@ def main():
                     X: test_data, Y_: test_labels}))
 
     def regression_session():
+        train_loss_history = []
+        valid_loss_history = []
         with tf.Session() as sees:
             sees.run(init)
             for i in range(EPOCHS):
@@ -166,19 +214,17 @@ def main():
                     total_loss += computed_loss
                 print("Training epoch: %d, loss: %f" % (i, total_loss / batches))
                 pred_valid = sees.run(Y, feed_dict={X: valid_data})
-                print("Validation loss:",
-                      sees.run(tf.reduce_mean(tf.abs(pred_valid - valid_labels))))
+                valid_loss = sees.run(tf.reduce_mean(tf.abs(pred_valid - valid_labels)))
+                print("Validation loss:", valid_loss)
+                train_loss_history.append(total_loss / batches)
+                valid_loss_history.append(valid_loss)
 
+            plot_loss(train_loss_history, valid_loss_history)
             if TEST_PATH is not None:
                 pred_test = sees.run(Y, feed_dict={X: test_data})
-                print("Test loss",
-                      sees.run(tf.reduce_mean(tf.abs(pred_test - test_labels))))
-                fig, ax = plt.subplots()
-                ax.scatter(test[:, :-1], test[:, -1:])
-                ax.scatter(test[:, :-1], pred_test)
-                ax.set_xlabel("X")
-                ax.set_ylabel("Y")
-                plt.show()
+                test_loss = sees.run(tf.reduce_mean(tf.abs(pred_test - test_labels)))
+                print("Test loss", test_loss)
+                plot_regression(test_data, test_labels, pred_test, test_loss)
 
     if MODE == CLASSIFICATION:
         classification_session()
@@ -188,3 +234,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+

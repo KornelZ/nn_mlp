@@ -11,7 +11,7 @@ import datetime
 CLASSIFICATION = 0
 REGRESSION = 1
 TEST_PATH = "data/Classification/data.three_gauss.test.10000.csv"
-TRAIN_PATH = "data/Regression/data.three_gauss.train.10000.csv"
+TRAIN_PATH = "data/Classification/data.three_gauss.train.10000.csv"
 TRAIN_SIZE_PERCENT = 0.75
 LEARNING_RATE = 0.001
 MOMENTUM = 0.2
@@ -91,7 +91,7 @@ def plot_confusion_matrix(cm, classes, title='Confusion matrix', cmap=plt.cm.Blu
 
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
-    plt.savefig("cm_.png".format(get_file_name()))
+    plt.savefig("cm_{}.png".format(get_file_name()))
     print('Confusion matrix saved.')
     plt.close()
 
